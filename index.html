@@ -397,16 +397,13 @@ function imgFor(key,cb){var im=_imgs[key];if(!im){im=_imgs[key]=new Image();im.a
 function imgTex(key){var t=new THREE.Texture(_imgs[key]||imgFor(key,function(){}));t.anisotropy=8;if(t.image.complete&&t.image.naturalWidth)t.needsUpdate=true;else t.image.addEventListener('load',function(){t.needsUpdate=true});return t}
 var $=function(id){return document.getElementById(id)};
 var canvas=$('c');
-var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
+var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true,powerPreference:"high-performance"});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-renderer.shadowMap.enabled=true;
-// Iluminación y sombras mejoradas (calidad adaptativa para móviles)
-renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=0.92;
 renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=0.92;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=0.92;
 var scene=new THREE.Scene();
 var ENV={w:'sol',t:'tarde',drag:1,spd:1,wx:0,wz:0,sx:26,sy:26,sz:12,flash:0};
 var floods=[],flagMeshes=[],grassMeshes=[];
@@ -421,17 +418,15 @@ scene.fog=new THREE.Fog(0x1a2d46,80,230);
 var camera=new THREE.PerspectiveCamera(52,1,0.1,500);
 
 // ---- luces (sol de estadio con sombras que acompañan la jugada)
-var hemi=new THREE.HemisphereLight(0xd9e8ff,0x263b25,0.78),amb=new THREE.AmbientLight(0xffffff,0.20);
+var hemi=new THREE.HemisphereLight(0xc4d6f5,0x28472f,0.78),amb=new THREE.AmbientLight(0xffffff,0.20);
 scene.add(hemi,amb);
-var sun=new THREE.DirectionalLight(0xfff3dc,1.18);
+var sun=new THREE.DirectionalLight(0xfff0d2,1.35);
 sun.position.set(14,32,26);
 sun.castShadow=true;
-sun.shadow.mapSize.set(3072,3072);
-sun.shadow.radius=3.2;
-sun.shadow.blurSamples=8;
+sun.shadow.mapSize.set(4096,4096);
+sun.shadow.radius=4;
 var sc=sun.shadow.camera; sc.left=-28;sc.right=28;sc.top=28;sc.bottom=-28;sc.near=5;sc.far=100;
-sun.shadow.bias=-0.00035;sun.shadow.normalBias=0.018;
-sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias=-0.00025;sun.shadow.normalBias=0.018;
 sun.target.position.set(0,0,12);
 scene.add(sun,sun.target);
 function focusSun(){
@@ -514,9 +509,9 @@ var NCELL=.16;
 // cuánto cuelga la red (hacia afuera; el techo hacia adentro) en cada punto: la pelota empieza a frenarse recién cuando llega a la red, no al marco
 function netSlack(name,p){
   var u,v,sg;
-  if(name==='back'){u=p.x/GW+.5;v=p.y/GHB;sg=.3}
-  else if(name==='top'){u=p.x/GW+.5;v=1+p.z/GD;sg=.16}
-  else{u=-p.z/GD;v=p.y/Math.max(.3,yTopAt(p.z));sg=.3}
+  if(name==='back'){u=p.x/GW+.5;v=p.y/GHB;sg=goalType==='clasico'?.62:.3}
+  else if(name==='top'){u=p.x/GW+.5;v=1+p.z/GD;sg=goalType==='clasico'?.32:.16}
+  else{u=-p.z/GD;v=p.y/Math.max(.3,yTopAt(p.z));sg=goalType==='clasico'?.62:.3}
   u=Math.max(0,Math.min(1,u));v=Math.max(0,Math.min(1,v));
   return sg*Math.sin(Math.PI*u)*Math.sin(Math.PI*v);
 }
@@ -531,7 +526,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var gx=sx+1,gy=sy+1,n=gx*gy,i,j;
   var base=new Float32Array(geo.attributes.position.array);
   // red floja: en reposo cuelga con panza
-  var sag=name==='top'?-.16:.3;
+  var sag=name==='top'?-.32:.62;
   for(i=0;i<n;i++){var u1=base[i*3]/w+.5,v1=base[i*3+1]/h+.5;base[i*3+2]=sign*sag*Math.sin(Math.PI*u1)*Math.sin(Math.PI*v1)}
   geo.attributes.position.array.set(base);geo.attributes.position.needsUpdate=true;
   var pinned=new Uint8Array(n);
@@ -550,7 +545,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var lg=new THREE.BufferGeometry();lg.setAttribute('position',geo.attributes.position);lg.setIndex(li);
   var lines=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0xf4f4f0,transparent:true,opacity:.5,depthWrite:false}));
   lines.frustumCulled=false;m.add(lines);
-  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.16:.3)};
+  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.32:.62)};
   nets.push(m);netByName[name]=m;
 }
 // ---- arma el arco según la opción elegida: 'nuevo' (como el de la foto, atrás bajo y pegado al piso) o 'clasico' (el de antes, caja)
@@ -564,17 +559,29 @@ function buildGoal(){
   nets.length=0;Object.keys(netByName).forEach(function(k){delete netByName[k]});
   var nuevo=goalType!=='clasico';GHB=nuevo?1.1:GH;
   cyl(PR,GH,-GW/2,GH/2,0);cyl(PR,GH,GW/2,GH/2,0);cyl(PR,GW+2*PR,0,GH,0,0,Math.PI/2);
-  [-1,1].forEach(function(s){
-    bar(.04,s*GW/2,GH,0,s*GW/2,GHB,-GD);          // caño del techo, en pendiente
-    bar(.04,s*GW/2,GHB,-GD,s*GW/2,.02,-GD);       // parante de atrás
-    if(nuevo)bar(.045,s*GW/2,.02,0,s*GW/2,.02,-GD); // base en el piso
-  });
-  bar(.04,-GW/2,GHB,-GD,GW/2,GHB,-GD);bar(.04,-GW/2,.02,-GD,GW/2,.02,-GD);
-  
-  netPlane(GW,GHB,0,GHB/2,-GD,0,0,-1,'back');
-  netPlane(GD,GH,-GW/2,GH/2,-GD/2,0,Math.PI/2,-1,'left');
-  netPlane(GD,GH,GW/2,GH/2,-GD/2,0,Math.PI/2,1,'right');
-  netPlane(GW,Math.hypot(GD,GH-GHB),0,(GH+GHB)/2,-GD/2,Math.atan2(GD,GH-GHB),0,-1,'top');
+  if(nuevo){
+    // Arco nuevo 100% triangular: dos diagonales convergen en el vértice superior central.
+    bar(.055,-GW/2,.02,0,0,GH,0);bar(.055,0,GH,0,GW/2,.02,0);
+    bar(.045,-GW/2,.02,0,GW/2,.02,0);
+    // profundidad triangular trasera: aristas hacia el vértice posterior
+    bar(.04,-GW/2,.02,-GD,0,GHB,-GD);bar(.04,0,GHB,-GD,GW/2,.02,-GD);
+    bar(.04,-GW/2,.02,0,-GW/2,.02,-GD);bar(.04,GW/2,.02,0,GW/2,.02,-GD);
+    bar(.04,-GW/2,.02,-GD,GW/2,.02,-GD);
+    // malla triangular de fondo y laterales
+    netPlane(GW,GHB,0,GHB/2,-GD,0,0,-1,'back');
+    netPlane(GD,GH,-GW/2,GH/2,-GD/2,0,Math.PI/2,-1,'left');
+    netPlane(GD,GH,GW/2,GH/2,-GD/2,0,Math.PI/2,1,'right');
+    netPlane(GW,Math.hypot(GD,GH-GHB),0,(GH+GHB)/2,-GD/2,Math.atan2(GD,GH-GHB),0,-1,'top');
+  }else{
+    // arco clásico rectangular
+    [-1,1].forEach(function(s){bar(.04,s*GW/2,GH,0,s*GW/2,0,-GD);});
+    bar(.04,-GW/2,GH,0,GW/2,GH,0);bar(.04,-GW/2,GH,-GD,GW/2,GH,-GD);
+    bar(.04,-GW/2,0,-GD,GW/2,0,-GD);
+    netPlane(GW,GH,0,GH/2,-GD,0,0,-1,'back');
+    netPlane(GD,GH,-GW/2,GH/2,-GD/2,0,Math.PI/2,-1,'left');
+    netPlane(GD,GH,GW/2,GH/2,-GD/2,0,Math.PI/2,1,'right');
+    netPlane(GW,GD,0,GH,-GD/2,Math.PI/2,0,-1,'top');
+  }
   
 }
 buildGoal();
@@ -1460,7 +1467,7 @@ function animKicker(kt){
   var tk=RUN-.3,run=Math.sin(kt*17)*.8*(1-Math.max(0,(kt-tk)/.3)),kick=0;
   if(kt>tk){var p=(kt-tk)/.3;kick=p<.5?(.9*(p/.5)):(.9-2.15*((p-.5)/.5))}
   poseKicker(run,kick-(kt>tk?run*0:0));
-  if(kt>tk)kicker.userData.legR.rotation.x=kick;
+  if(kt>tk){var follow=Math.max(0,Math.min(1,(kt-tk-.18)/.22));kicker.userData.legR.rotation.x=kick-.42*follow; kicker.userData.legL.rotation.x=.18*follow; kicker.rotation.z=.06*Math.sin(Math.PI*follow);}
 }
 function followKicker(t){
   var k=Math.min(1,t/.5);
