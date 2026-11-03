@@ -287,7 +287,7 @@ body.crm #hud{top:calc(env(safe-area-inset-top,0px) + 58px)}
     <p id="diffDesc"></p>
     </div>
     <div class="row"><button class="btn" id="play" type="button">Jugar</button><button class="btn ghost" id="shopBtn" type="button">Tienda · $<span id="mMoney">0</span></button><button class="btn ghost" id="custBtn" type="button">Personalizar</button><button class="btn ghost" id="repsBtn" type="button">Repeticiones (<span id="repsN">0</span>)</button></div>
-    <div class="row" id="gfxRow" style="align-items:center;gap:10px;font-size:13px;color:var(--chalk)"><label for="gfxQ">Gráficos</label><select id="gfxQ"><option value="2">Alto</option><option value="1">Medio</option><option value="0">Bajo</option></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="gfxGrass" checked> Pasto</label><label for="gfxGoal">Arco</label><select id="gfxGoal"><option value="clasico">Clásico</option></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sndOn" checked> Sonido</label></div>
+    <div class="row" id="gfxRow" style="align-items:center;gap:10px;font-size:13px;color:var(--chalk)"><label for="gfxQ">Gráficos</label><select id="gfxQ"><option value="2">Alto</option><option value="1">Medio</option><option value="0">Bajo</option></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="gfxGrass" checked> Pasto</label><label for="gfxGoal">Arco</label><select id="gfxGoal"><option value="clasico">Clásico</option></select><label for="netLoose" style="display:flex;align-items:center;gap:5px">Red floja <input type="range" id="netLoose" min="0" max="100" step="5" value="65" style="width:95px"></label><b id="netLooseVal" style="font-size:12px">65%</b><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sndOn" checked> Sonido</label></div>
     <p class="menu-label" id="charNote" style="margin:12px 0 0"></p>
   </div>
 </section>
@@ -501,8 +501,10 @@ function netTex(rx,ry){
   var t=imgTex('net');t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);return t;
 }
 var nets=[],netByName={};
+var NET_LOOSE=65; // 0=tensa, 100=muy floja
+function netLoose01(){return Math.max(0,Math.min(1,NET_LOOSE/100))}
 // ---- red de tela: puntos con masa unidos por resortes (verlet + restricciones de distancia), anclada al marco
-var NCELL=.12;
+var NCELL=.075; // malla más fina: muchos más vértices para que el golpe se distribuya localmente
 // cuánto cuelga la red (hacia afuera; el techo hacia adentro) en cada punto: la pelota empieza a frenarse recién cuando llega a la red, no al marco
 function netSlack(name,p){
   var u,v,sg;
@@ -523,7 +525,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var gx=sx+1,gy=sy+1,n=gx*gy,i,j;
   var base=new Float32Array(geo.attributes.position.array);
   // red floja: en reposo cuelga con panza
-  var sag=name==='top'?-.22:.48;
+  var loose=netLoose01(),sag=name==='top'?-(.07+.28*loose):(.08+.62*loose);
   for(i=0;i<n;i++){var u1=base[i*3]/w+.5,v1=base[i*3+1]/h+.5;base[i*3+2]=sign*sag*Math.sin(Math.PI*u1)*Math.sin(Math.PI*v1)}
   geo.attributes.position.array.set(base);geo.attributes.position.needsUpdate=true;
   var pinned=new Uint8Array(n);
@@ -542,7 +544,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var lg=new THREE.BufferGeometry();lg.setAttribute('position',geo.attributes.position);lg.setIndex(li);
   var lines=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0xf4f4f0,transparent:true,opacity:.5,depthWrite:false}));
   lines.frustumCulled=false;m.add(lines);
-  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.22:.48)};
+  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag};
   nets.push(m);netByName[name]=m;
 }
 // ---- arma el arco según la opción elegida: 'nuevo' (como el de la foto, atrás bajo y pegado al piso) o 'clasico' (el de antes, caja)
@@ -552,6 +554,7 @@ function bar(r,ax,ay,az,bx,by,bz){
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());m.castShadow=true;goal.add(m);
 }
 function buildGoal(){
+  tuneNetPhysics();
   while(goal.children.length)goal.remove(goal.children[0]);
   nets.length=0;Object.keys(netByName).forEach(function(k){delete netByName[k]});
   // Arco clásico rectangular restaurado; se conserva íntegro el sistema físico de la red.
@@ -578,6 +581,7 @@ function netKick(name,x,y,z,spd,inw){ // sonido del impacto y marca para las rep
 }
 // simulación de la tela
 var NET_SM=.035,NET_KL=.0035,NET_KH=.012,NET_DAMP=.985,NET_STIFF=.24,_nb=new THREE.Vector3();
+function tuneNetPhysics(){var l=netLoose01();NET_SM=.055-.04*l;NET_KL=.006-.0048*l;NET_KH=.018-.014*l;NET_DAMP=.972+.023*l;NET_STIFF=.34-.25*l}
 function netStep(u,c,R,near,iters){
   var P=u.P,Q=u.Q,B=u.base,pin=u.pinned,n=pin.length,i,k,it;
   for(i=0;i<n;i++){
@@ -2552,8 +2556,8 @@ function resize(){
   fovBase=w/h<.8?70:52;camera.fov=fovBase;camera.updateProjectionMatrix();
 }
 window.addEventListener('resize',resize);resize();
-var GFX={q:2,grass:true,goal:'nuevo'};
-try{var gs=JSON.parse(localStorage.getItem('tiroLibre3dGfx')||'null');if(gs){GFX.q=gs.q|0;GFX.grass=gs.grass!==false;GFX.goal=gs.goal==='clasico'?'clasico':'nuevo'}}catch(e){}
+var GFX={q:2,grass:true,goal:'clasico',netLoose:65};
+try{var gs=JSON.parse(localStorage.getItem('tiroLibre3dGfx')||'null');if(gs){GFX.q=gs.q|0;GFX.grass=gs.grass!==false;GFX.goal='clasico';GFX.netLoose=Math.max(0,Math.min(100,gs.netLoose==null?65:gs.netLoose|0))}}catch(e){}
 function applyGfx(){
   var q=GFX.q,pr=window.devicePixelRatio||1;
   renderer.setPixelRatio(q===2?Math.min(pr,2):q===1?Math.min(pr,1.25):1);
@@ -2562,14 +2566,16 @@ function applyGfx(){
   sun.castShadow=q>0;
   var frac=!GFX.grass?0:q===2?1:q===1?.4:.12;
   grassMeshes.forEach(function(m){if(m.userData.full==null)m.userData.full=m.count;m.count=Math.floor(m.userData.full*frac);m.visible=m.count>0});
-  if(goalType!==GFX.goal){goalType=GFX.goal;buildGoal()}
+  NET_LOOSE=GFX.netLoose; if(goalType!==GFX.goal||nets.length===0){goalType=GFX.goal;buildGoal()} else tuneNetPhysics();
   resize();
-  var a=$('gfxQ'),b=$('gfxGrass');if(a)a.value=String(q);if(b)b.checked=GFX.grass;var gg=$('gfxGoal');if(gg)gg.value=GFX.goal;
+  var a=$('gfxQ'),b=$('gfxGrass');if(a)a.value=String(q);if(b)b.checked=GFX.grass;var gg=$('gfxGoal');if(gg)gg.value=GFX.goal;var nl=$('netLoose'),nv=$('netLooseVal');if(nl)nl.value=String(GFX.netLoose);if(nv)nv.textContent=GFX.netLoose+'%';
   try{localStorage.setItem('tiroLibre3dGfx',JSON.stringify(GFX))}catch(e){}if(typeof syncSoon==='function')syncSoon();
 }
 $('gfxQ').addEventListener('change',function(){GFX.q=+this.value;applyGfx()});
 $('gfxGoal').addEventListener('change',function(){GFX.goal=this.value;applyGfx()});
 $('gfxGrass').addEventListener('change',function(){GFX.grass=this.checked;applyGfx()});
+$('netLoose').addEventListener('input',function(){GFX.netLoose=+this.value;NET_LOOSE=GFX.netLoose;var v=$('netLooseVal');if(v)v.textContent=GFX.netLoose+'%';tuneNetPhysics();try{localStorage.setItem('tiroLibre3dGfx',JSON.stringify(GFX))}catch(e){}});
+$('netLoose').addEventListener('change',function(){buildGoal();});
 $('sndOn').checked=SND.on;$('sndOn').addEventListener('change',function(){setSound(this.checked)});
 applyGfx();
 
