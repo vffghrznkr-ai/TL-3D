@@ -287,7 +287,7 @@ body.crm #hud{top:calc(env(safe-area-inset-top,0px) + 58px)}
     <p id="diffDesc"></p>
     </div>
     <div class="row"><button class="btn" id="play" type="button">Jugar</button><button class="btn ghost" id="shopBtn" type="button">Tienda · $<span id="mMoney">0</span></button><button class="btn ghost" id="custBtn" type="button">Personalizar</button><button class="btn ghost" id="repsBtn" type="button">Repeticiones (<span id="repsN">0</span>)</button></div>
-    <div class="row" id="gfxRow" style="align-items:center;gap:10px;font-size:13px;color:var(--chalk)"><label for="gfxQ">Gráficos</label><select id="gfxQ"><option value="2">Alto</option><option value="1">Medio</option><option value="0">Bajo</option></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="gfxGrass" checked> Pasto</label><label for="gfxGoal">Arco</label><select id="gfxGoal"><option value="nuevo">Nuevo</option><option value="clasico">Clásico</option></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sndOn" checked> Sonido</label></div>
+    <div class="row" id="gfxRow" style="align-items:center;gap:10px;font-size:13px;color:var(--chalk)"><label for="gfxQ">Gráficos</label><select id="gfxQ"><option value="2">Alto</option><option value="1">Medio</option><option value="0">Bajo</option></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="gfxGrass" checked> Pasto</label><label for="gfxGoal">Arco</label><select id="gfxGoal"><option value="clasico">Clásico</option></select><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sndOn" checked> Sonido</label></div>
     <p class="menu-label" id="charNote" style="margin:12px 0 0"></p>
   </div>
 </section>
@@ -495,14 +495,14 @@ var GW=7.32,GH=2.44,GD=2.2,PR=0.06;
 var goal=new THREE.Group();scene.add(goal);
 var white=new THREE.MeshStandardMaterial({color:0xf0f0ec,roughness:.4,metalness:.1});
 function cyl(r,h,x,y,z,rx,rz){var m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,12),white);m.position.set(x,y,z);m.rotation.x=rx||0;m.rotation.z=rz||0;m.castShadow=true;goal.add(m);return m}
-var GHB=1.1,goalType='nuevo';
-function yTopAt(z){return GH-(GH-GHB)*Math.min(1,Math.max(0,-z/GD))}
+var GHB=GH,goalType='clasico';
+function yTopAt(z){return GH}
 function netTex(rx,ry){
   var t=imgTex('net');t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);return t;
 }
 var nets=[],netByName={};
 // ---- red de tela: puntos con masa unidos por resortes (verlet + restricciones de distancia), anclada al marco
-var NCELL=.16;
+var NCELL=.12;
 // cuánto cuelga la red (hacia afuera; el techo hacia adentro) en cada punto: la pelota empieza a frenarse recién cuando llega a la red, no al marco
 function netSlack(name,p){
   var u,v,sg;
@@ -523,7 +523,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var gx=sx+1,gy=sy+1,n=gx*gy,i,j;
   var base=new Float32Array(geo.attributes.position.array);
   // red floja: en reposo cuelga con panza
-  var sag=name==='top'?-.16:.3;
+  var sag=name==='top'?-.22:.48;
   for(i=0;i<n;i++){var u1=base[i*3]/w+.5,v1=base[i*3+1]/h+.5;base[i*3+2]=sign*sag*Math.sin(Math.PI*u1)*Math.sin(Math.PI*v1)}
   geo.attributes.position.array.set(base);geo.attributes.position.needsUpdate=true;
   var pinned=new Uint8Array(n);
@@ -542,7 +542,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var lg=new THREE.BufferGeometry();lg.setAttribute('position',geo.attributes.position);lg.setIndex(li);
   var lines=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0xf4f4f0,transparent:true,opacity:.5,depthWrite:false}));
   lines.frustumCulled=false;m.add(lines);
-  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.16:.3)};
+  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.22:.48)};
   nets.push(m);netByName[name]=m;
 }
 // ---- arma el arco según la opción elegida: 'nuevo' (como el de la foto, atrás bajo y pegado al piso) o 'clasico' (el de antes, caja)
@@ -554,20 +554,21 @@ function bar(r,ax,ay,az,bx,by,bz){
 function buildGoal(){
   while(goal.children.length)goal.remove(goal.children[0]);
   nets.length=0;Object.keys(netByName).forEach(function(k){delete netByName[k]});
-  var nuevo=goalType!=='clasico';GHB=nuevo?1.1:GH;
-  cyl(PR,GH,-GW/2,GH/2,0);cyl(PR,GH,GW/2,GH/2,0);cyl(PR,GW+2*PR,0,GH,0,0,Math.PI/2);
-  [-1,1].forEach(function(s){
-    bar(.04,s*GW/2,GH,0,s*GW/2,GHB,-GD);          // caño del techo, en pendiente
-    bar(.04,s*GW/2,GHB,-GD,s*GW/2,.02,-GD);       // parante de atrás
-    if(nuevo)bar(.045,s*GW/2,.02,0,s*GW/2,.02,-GD); // base en el piso
+  // Arco clásico rectangular restaurado; se conserva íntegro el sistema físico de la red.
+  GHB=GH;
+  cyl(PR,GH,-GW/2,GH/2,0);cyl(PR,GH,GW/2,GH/2,0);
+  cyl(PR,GW+2*PR,0,GH,0,0,Math.PI/2);
+  [-1,1].forEach(function(side){
+    bar(.04,side*GW/2,GH,0,side*GW/2,GH,-GD);
+    bar(.04,side*GW/2,GH,-GD,side*GW/2,.02,-GD);
+    bar(.045,side*GW/2,.02,0,side*GW/2,.02,-GD);
   });
-  bar(.04,-GW/2,GHB,-GD,GW/2,GHB,-GD);bar(.04,-GW/2,.02,-GD,GW/2,.02,-GD);
-  
-  netPlane(GW,GHB,0,GHB/2,-GD,0,0,-1,'back');
+  bar(.04,-GW/2,GH,-GD,GW/2,GH,-GD);
+  bar(.04,-GW/2,.02,-GD,GW/2,.02,-GD);
+  netPlane(GW,GH,0,GH/2,-GD,0,0,-1,'back');
   netPlane(GD,GH,-GW/2,GH/2,-GD/2,0,Math.PI/2,-1,'left');
   netPlane(GD,GH,GW/2,GH/2,-GD/2,0,Math.PI/2,1,'right');
-  netPlane(GW,Math.hypot(GD,GH-GHB),0,(GH+GHB)/2,-GD/2,Math.atan2(GD,GH-GHB),0,-1,'top');
-  
+  netPlane(GW,GD,0,GH,-GD/2,Math.PI/2,0,-1,'top');
 }
 buildGoal();
 var _np=new THREE.Vector3();
@@ -576,7 +577,7 @@ function netKick(name,x,y,z,spd,inw){ // sonido del impacto y marca para las rep
   if(state==='flight')rec.E.push([+rec.tt.toFixed(3),name,+x.toFixed(2),+y.toFixed(2),+z.toFixed(2),+spd.toFixed(1),inw?1:0]);
 }
 // simulación de la tela
-var NET_SM=0,NET_KL=.002,NET_KH=.02,NET_DAMP=.992,NET_STIFF=.5,_nb=new THREE.Vector3();
+var NET_SM=.035,NET_KL=.0035,NET_KH=.012,NET_DAMP=.985,NET_STIFF=.24,_nb=new THREE.Vector3();
 function netStep(u,c,R,near,iters){
   var P=u.P,Q=u.Q,B=u.base,pin=u.pinned,n=pin.length,i,k,it;
   for(i=0;i<n;i++){
