@@ -400,8 +400,13 @@ var canvas=$('c');
 var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
 renderer.shadowMap.enabled=true;
+// Iluminación y sombras mejoradas (calidad adaptativa para móviles)
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=0.8;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=0.92;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+
 var scene=new THREE.Scene();
 var ENV={w:'sol',t:'tarde',drag:1,spd:1,wx:0,wz:0,sx:26,sy:26,sz:12,flash:0};
 var floods=[],flagMeshes=[],grassMeshes=[];
@@ -416,14 +421,17 @@ scene.fog=new THREE.Fog(0x1a2d46,80,230);
 var camera=new THREE.PerspectiveCamera(52,1,0.1,500);
 
 // ---- luces (sol de estadio con sombras que acompañan la jugada)
-var hemi=new THREE.HemisphereLight(0xc4d6f5,0x28472f,0.6),amb=new THREE.AmbientLight(0xffffff,0.14);
+var hemi=new THREE.HemisphereLight(0xd9e8ff,0x263b25,0.78),amb=new THREE.AmbientLight(0xffffff,0.20);
 scene.add(hemi,amb);
-var sun=new THREE.DirectionalLight(0xfff0d2,0.95);
+var sun=new THREE.DirectionalLight(0xfff3dc,1.18);
 sun.position.set(14,32,26);
 sun.castShadow=true;
 sun.shadow.mapSize.set(3072,3072);
+sun.shadow.radius=3.2;
+sun.shadow.blurSamples=8;
 var sc=sun.shadow.camera; sc.left=-28;sc.right=28;sc.top=28;sc.bottom=-28;sc.near=5;sc.far=100;
-sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.03;
+sun.shadow.bias=-0.00035;sun.shadow.normalBias=0.018;
+sun.shadow.camera.updateProjectionMatrix();
 sun.target.position.set(0,0,12);
 scene.add(sun,sun.target);
 function focusSun(){
@@ -502,7 +510,7 @@ function netTex(rx,ry){
 }
 var nets=[],netByName={};
 // ---- red de tela: puntos con masa unidos por resortes (verlet + restricciones de distancia), anclada al marco
-var NCELL=.12;
+var NCELL=.16;
 // cuánto cuelga la red (hacia afuera; el techo hacia adentro) en cada punto: la pelota empieza a frenarse recién cuando llega a la red, no al marco
 function netSlack(name,p){
   var u,v,sg;
@@ -523,7 +531,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var gx=sx+1,gy=sy+1,n=gx*gy,i,j;
   var base=new Float32Array(geo.attributes.position.array);
   // red floja: en reposo cuelga con panza
-  var sag=name==='top'?-.22:.48;
+  var sag=name==='top'?-.16:.3;
   for(i=0;i<n;i++){var u1=base[i*3]/w+.5,v1=base[i*3+1]/h+.5;base[i*3+2]=sign*sag*Math.sin(Math.PI*u1)*Math.sin(Math.PI*v1)}
   geo.attributes.position.array.set(base);geo.attributes.position.needsUpdate=true;
   var pinned=new Uint8Array(n);
@@ -542,7 +550,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var lg=new THREE.BufferGeometry();lg.setAttribute('position',geo.attributes.position);lg.setIndex(li);
   var lines=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0xf4f4f0,transparent:true,opacity:.5,depthWrite:false}));
   lines.frustumCulled=false;m.add(lines);
-  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.22:.48)};
+  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.16:.3)};
   nets.push(m);netByName[name]=m;
 }
 // ---- arma el arco según la opción elegida: 'nuevo' (como el de la foto, atrás bajo y pegado al piso) o 'clasico' (el de antes, caja)
@@ -576,7 +584,7 @@ function netKick(name,x,y,z,spd,inw){ // sonido del impacto y marca para las rep
   if(state==='flight')rec.E.push([+rec.tt.toFixed(3),name,+x.toFixed(2),+y.toFixed(2),+z.toFixed(2),+spd.toFixed(1),inw?1:0]);
 }
 // simulación de la tela
-var NET_SM=.035,NET_KL=.0035,NET_KH=.012,NET_DAMP=.985,NET_STIFF=.24,_nb=new THREE.Vector3();
+var NET_SM=0,NET_KL=.002,NET_KH=.02,NET_DAMP=.992,NET_STIFF=.5,_nb=new THREE.Vector3();
 function netStep(u,c,R,near,iters){
   var P=u.P,Q=u.Q,B=u.base,pin=u.pinned,n=pin.length,i,k,it;
   for(i=0;i<n;i++){
