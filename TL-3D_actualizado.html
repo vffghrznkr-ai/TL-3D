@@ -523,7 +523,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var gx=sx+1,gy=sy+1,n=gx*gy,i,j;
   var base=new Float32Array(geo.attributes.position.array);
   // red floja: en reposo cuelga con panza
-  var sag=name==='top'?-.16:((name==='left'||name==='right')?.025:.3); // laterales tensos en reposo
+  var sag=name==='top'?-.055:.075;
   for(i=0;i<n;i++){var u1=base[i*3]/w+.5,v1=base[i*3+1]/h+.5;base[i*3+2]=sign*sag*Math.sin(Math.PI*u1)*Math.sin(Math.PI*v1)}
   geo.attributes.position.array.set(base);geo.attributes.position.needsUpdate=true;
   var pinned=new Uint8Array(n);
@@ -542,7 +542,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   var lg=new THREE.BufferGeometry();lg.setAttribute('position',geo.attributes.position);lg.setIndex(li);
   var lines=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0xf4f4f0,transparent:true,opacity:.5,depthWrite:false}));
   lines.frustumCulled=false;m.add(lines);
-  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag};
+  m.userData={base:base,P:new Float32Array(base),Q:new Float32Array(base),pinned:pinned,ca:Int32Array.from(ca),cb:Int32Array.from(cb),cl:Float32Array.from(cl),gx:gx,gy:gy,act:false,sign:sign,side:0,w:w,h:h,sag:sag===undefined?0:(name==='top'?-.055:.075)};
   nets.push(m);netByName[name]=m;
 }
 // ---- arma el arco según la opción elegida: 'nuevo' (como el de la foto, atrás bajo y pegado al piso) o 'clasico' (el de antes, caja)
@@ -576,7 +576,7 @@ function netKick(name,x,y,z,spd,inw){ // sonido del impacto y marca para las rep
   if(state==='flight')rec.E.push([+rec.tt.toFixed(3),name,+x.toFixed(2),+y.toFixed(2),+z.toFixed(2),+spd.toFixed(1),inw?1:0]);
 }
 // simulación de la tela
-var NET_SM=0,NET_KL=.002,NET_KH=.02,NET_DAMP=.992,NET_STIFF=.5,_nb=new THREE.Vector3();
+var NET_SM=.012,NET_KL=.018,NET_KH=.045,NET_DAMP=.986,NET_STIFF=.88,_nb=new THREE.Vector3();
 function netStep(u,c,R,near,iters){
   var P=u.P,Q=u.Q,B=u.base,pin=u.pinned,n=pin.length,i,k,it;
   for(i=0;i<n;i++){
@@ -624,7 +624,7 @@ function netStep(u,c,R,near,iters){
 function updateNets(dt){
   var bp=ball.position,near=ball.visible!==false&&Math.abs(bp.x)<GW/2+.7&&bp.y<GH+.7&&bp.z<.5&&bp.z>-GD-.7;
   // lejos de la cámara: simulación simplificada (menos pasos y menos iteraciones)
-  var far=camera.position.distanceTo(goal.position)>34,hz=far?60:100,iters=far?2:3,steps=Math.min(3,Math.max(1,Math.round(Math.min(dt,.05)*hz))),R=BR*1.25+.03;
+  var far=camera.position.distanceTo(goal.position)>34,hz=far?60:100,iters=far?3:5,steps=Math.min(3,Math.max(1,Math.round(Math.min(dt,.05)*hz))),R=BR*1.25+.03;
   nets.forEach(function(m){
     var u=m.userData;
     if(near)u.act=true;
