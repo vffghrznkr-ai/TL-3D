@@ -517,7 +517,7 @@ function netPlane(w,h,x,y,z,rx,ry,sign,name){
   m.position.set(x,y,z);m.rotation.set(rx||0,ry||0,0);m.frustumCulled=false;goal.add(m);m.updateMatrixWorld(true);
   if(name==='left'||name==='right'){var pa=geo.attributes.position.array;for(var kk=0;kk<pa.length;kk+=3){var uu=pa[kk]/w+.5,ss=1-(1-GHB/GH)*uu;pa[kk+1]=(pa[kk+1]+h/2)*ss-h/2}}
   var gx=sx+1,gy=sy+1,n=gx*gy,base=new Float32Array(geo.attributes.position.array),i,j;
-  var sag=name==='top'?.035:.055; // red con caída visible y bastante holgura
+  var sag=name==='top'?.018:.025; // caída sutil de una red real
   for(i=0;i<n;i++){var u1=base[i*3]/w+.5,v1=base[i*3+1]/h+.5;base[i*3+2]=sign*sag*Math.sin(Math.PI*u1)*Math.sin(Math.PI*v1)}
   geo.attributes.position.array.set(base);geo.attributes.position.needsUpdate=true;
   var pinned=new Uint8Array(n);for(i=0;i<n;i++){var cx=i%gx,cy=(i/gx)|0;pinned[i]=(cx===0||cx===gx-1||cy===0||cy===gy-1)?1:0}
@@ -561,7 +561,7 @@ function netKick(name,x,y,z,spd,inw){ // sonido del impacto y marca para las rep
   if(state==='flight')rec.E.push([+rec.tt.toFixed(3),name,+x.toFixed(2),+y.toFixed(2),+z.toFixed(2),+spd.toFixed(1),inw?1:0]);
 }
 // ---- Solver nuevo de tela: Verlet, resortes de estructura/diagonales/flexión y contacto localizado
-var NET_DAMP=.985,NET_RESTORE=.0018,_nb=new THREE.Vector3(); // conserva el estiramiento y recupera lentamente
+var NET_DAMP=.94,NET_RESTORE=.012,_nb=new THREE.Vector3(); // amortiguación y recuperación realistas
 function netStep(u,c,R,near,iters,dt){
   var P=u.P,Q=u.Q,B=u.base,pin=u.pinned,n=pin.length,i,k,it,dt2=dt*dt;
   for(i=0;i<n;i++){if(pin[i])continue;var q=i*3,vx=(P[q]-Q[q])*NET_DAMP,vy=(P[q+1]-Q[q+1])*NET_DAMP,vz=(P[q+2]-Q[q+2])*NET_DAMP;
@@ -570,10 +570,10 @@ function netStep(u,c,R,near,iters,dt){
   }
   // Colisión puntual pelota-tela: sin halo ni empuje artificial alrededor.
   // Únicamente los nodos dentro del radio real de contacto reciben desplazamiento.
-  if(near&&u.side){var rr=(R*2.05)*(R*2.05);for(i=0;i<n;i++){if(pin[i])continue;var a=i*3,dx=P[a]-c.x,dy=P[a+1]-c.y,d2=dx*dx+dy*dy;if(d2<rr){var depth=Math.sqrt(rr-d2),power=(ball.velocity?Math.min(5.5,1.5+ball.velocity.length()*.09):2.4),push=depth*4.1*power,target=c.z+u.sign*push;if(u.sign*(P[a+2]-c.z)<push)P[a+2]=target}}}
+  if(near&&u.side){for(i=0;i<n;i++){if(pin[i])continue;var a=i*3,dx=P[a]-c.x,dy=P[a+1]-c.y,dz=P[a+2]-c.z,d2=dx*dx+dy*dy+dz*dz,dist=Math.sqrt(d2);/* contacto físico real: el centro de la pelota debe estar a menos de su radio del vértice */if(dist<R){var depth=R-dist,power=(ball.velocity?Math.min(2.2,1+ball.velocity.length()*.025):1),push=depth*1.15*power;P[a+2]+=u.sign*push;}}}
   var ca=u.ca,cb=u.cb,cl=u.cl,kind=u.kind,m=ca.length;
   for(it=0;it<iters;it++)for(k=0;k<m;k++){var ia=ca[k]*3,ib=cb[k]*3,dx=P[ib]-P[ia],dy=P[ib+1]-P[ia+1],dz=P[ib+2]-P[ia+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz);if(d<1e-8)continue;
-    var stiffness=kind[k]===0?.115:(kind[k]===1?.052:.012),f=(d-cl[k])/d*stiffness,pa=pin[ca[k]],pb=pin[cb[k]];if(pa&&pb)continue;var wa=pa?0:(pb?1:.5),wb=pb?0:(pa?1:.5);
+    var stiffness=kind[k]===0?.085:(kind[k]===1?.035:.008),f=(d-cl[k])/d*stiffness,pa=pin[ca[k]],pb=pin[cb[k]];if(pa&&pb)continue;var wa=pa?0:(pb?1:.5),wb=pb?0:(pa?1:.5);
     P[ia]+=dx*f*wa;P[ia+1]+=dy*f*wa;P[ia+2]+=dz*f*wa;P[ib]-=dx*f*wb;P[ib+1]-=dy*f*wb;P[ib+2]-=dz*f*wb;
   }
 }
