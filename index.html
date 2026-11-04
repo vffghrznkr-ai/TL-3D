@@ -502,7 +502,7 @@ function netTex(rx,ry){
 }
 var nets=[],netByName={};
 // ---- Tela de red: partículas Verlet con anclajes y constraints estructurales/diagonales
-var NCELL=.115; // menos vértices, conservando una malla suficientemente detallada
+var NCELL=.14; // malla algo menos densa, manteniendo detalle visual
 function netSlack(name,p){
   var u,v,sg;
   if(name==='back'){u=p.x/GW+.5;v=p.y/GHB;sg=.08}
@@ -568,9 +568,19 @@ function netStep(u,c,R,near,iters,dt){
     Q[q]=P[q];Q[q+1]=P[q+1];Q[q+2]=P[q+2];
     P[q]+=vx+(B[q]-P[q])*NET_RESTORE*dt2*60;P[q+1]+=vy+(B[q+1]-P[q+1])*NET_RESTORE*dt2*60;P[q+2]+=vz+(B[q+2]-P[q+2])*NET_RESTORE*dt2*60;
   }
-  // Colisión puntual pelota-tela: sin halo ni empuje artificial alrededor.
-  // Únicamente los nodos dentro del radio real de contacto reciben desplazamiento.
-  if(near&&u.side){for(i=0;i<n;i++){if(pin[i])continue;var a=i*3,dx=P[a]-c.x,dy=P[a+1]-c.y,dz=P[a+2]-c.z,d2=dx*dx+dy*dy+dz*dz,dist=Math.sqrt(d2);/* contacto físico real: el centro de la pelota debe estar a menos de su radio del vértice */if(dist<R){var depth=R-dist,power=(ball.velocity?Math.min(3.0,1+ball.velocity.length()*.035):1),push=depth*1.65*power;P[a+2]+=u.sign*push;}}}
+  // Impacto local: exige que la esfera cruce/t toque el plano de tela.
+  // Se reparte la presión entre nodos cercanos para que no dependa de acertar un vértice.
+  if(near&&u.side){
+    var planeDist=Math.abs(c.z),penetration=R-planeDist;
+    if(penetration>0){
+      var reach=Math.max(.22,NCELL*1.8),power=(ball.velocity?Math.min(3.2,1+ball.velocity.length()*.04):1);
+      for(i=0;i<n;i++){if(pin[i])continue;var a=i*3,dx=P[a]-c.x,dy=P[a+1]-c.y,rad=Math.sqrt(dx*dx+dy*dy);
+        if(rad<reach){var fall=Math.pow(1-rad/reach,2),push=penetration*1.35*power*fall;
+          P[a+2]+=u.sign*push;
+        }
+      }
+    }
+  }
   var ca=u.ca,cb=u.cb,cl=u.cl,kind=u.kind,m=ca.length;
   for(it=0;it<iters;it++)for(k=0;k<m;k++){var ia=ca[k]*3,ib=cb[k]*3,dx=P[ib]-P[ia],dy=P[ib+1]-P[ia+1],dz=P[ib+2]-P[ia+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz);if(d<1e-8)continue;
     var stiffness=kind[k]===0?.060:(kind[k]===1?.022:.005),f=(d-cl[k])/d*stiffness,pa=pin[ca[k]],pb=pin[cb[k]];if(pa&&pb)continue;var wa=pa?0:(pb?1:.5),wb=pb?0:(pa?1:.5);
