@@ -1474,8 +1474,8 @@ function reset(){
   trailPts=[];setTrail();wallGroup.visible=!pens.on;
   placeKicker();
 }
-var RUN=1.18; // carrera algo más larga: acelera, da los últimos pasos y desacelera para apoyar
-// rodilla según el ángulo de la pierna: atrás la dobla mucho (preparar el golpe), adelante poco; así también se ve bien en las repeticiones
+var RUN=.92, kickPrep=1;
+// Rodilla y apoyo coordinados con la pose de cada pierna
 function kneeFor(x){return .1+(x>0?1.6*x:-.3*x)}
 function setKnees(){var u=kicker.userData;u.legL.userData.kn.rotation.x=kneeFor(u.legL.rotation.x);u.legR.userData.kn.rotation.x=kneeFor(u.legR.rotation.x)}
 function poseKicker(sw,kick){
@@ -1483,8 +1483,7 @@ function poseKicker(sw,kick){
   u.legL.rotation.x=-sw;u.legR.rotation.x=sw+kick;
   u.armL.rotation.z=-.15;u.armR.rotation.z=.15;
   u.armL.rotation.x=sw*.9;u.armR.rotation.x=-sw*.9;
-  kicker.rotation.x=0;kicker.position.y=0;
-  setKnees();
+  kicker.rotation.x=0;kicker.position.y=0;setKnees();
 }
 function placeKicker(){
   var ux=flight.ux,uz=flight.uz,gx=-uz,gz=ux;
@@ -1495,54 +1494,45 @@ function placeKicker(){
 }
 function sstep(x){x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)}
 function lerp(a,b,t){return a+(b-a)*t}
-// poses (pie derecho patea): [pierna izq, pierna der, brazo izq x, brazo der x, brazo izq z, brazo der z, inclinación del torso]
-var POSE_WIND=[-.42,1.18,-.72,.58,-.98,.42,-.20];   // pie izquierdo plantado, pierna derecha atrás con la rodilla flexionada, brazo izquierdo abierto
-var POSE_HIT=[-.18,-.28,-.92,.72,-1.02,.30,.24];       // impacto: pierna casi extendida, torso adelante sobre la pelota
+// [pierna izq, der, brazo izq x, der x, brazo izq z, der z, torso]
+var POSE_WIND=[-.48,1.28,-.78,.62,-1.02,.48,-.24];
+var POSE_HIT=[-.22,-.32,-1.02,.78,-1.12,.38,.30];
 function applyPose(p){
   var u=kicker.userData;
-  u.legL.rotation.x=p[0];u.legR.rotation.x=p[1];u.armL.rotation.x=p[2];u.armR.rotation.x=p[3];u.armL.rotation.z=p[4];u.armR.rotation.z=p[5];kicker.rotation.x=p[6];
+  u.legL.rotation.x=p[0];u.legR.rotation.x=p[1];
+  u.armL.rotation.x=p[2];u.armR.rotation.x=p[3];
+  u.armL.rotation.z=p[4];u.armR.rotation.z=p[5];
+  kicker.rotation.x=p[6];
 }
 function runPose(ph,amp){
-  // Zancada alternada: brazos contrarios a las piernas, tronco inclinado y rodillas flexionadas.
-  var s=Math.sin(ph)*amp,c=Math.cos(ph)*amp;
-  return [-s*.82,s*.82,-s*.72,s*.72,-.18-c*.10,.18+c*.10,.19+amp*.045];
+  // ciclo asimétrico: braceo contrario a las piernas y pequeñas variaciones de torso
+  var s=Math.sin(ph),c=Math.cos(ph),stride=amp*(.72*s+.18*Math.sin(2*ph));
+  return [-stride,stride,-stride*.88,stride*.88,-.22-.12*amp+.10*c,.22+.12*amp-.10*c,.13+.10*Math.sin(ph*2)];
 }
 function animKicker(kt){
-  var u=kicker.userData,tw=RUN-.48,tp=RUN-.14,runT=Math.min(1,kt/tw),pose;
-  // Aceleración progresiva al salir y frenada suave en los últimos pasos (sin deslizarse).
-  var travel=sstep(runT),ease=travel*travel*(3-2*travel);
-  kicker.position.set(u.s0[0]+(u.c[0]-u.s0[0])*ease,0,u.s0[1]+(u.c[1]-u.s0[1])*ease);
-  var ph=Math.min(kt,tw)*18.2,amp=.92*Math.min(1,kt/.20)*(1-.22*sstep((kt-tw*.72)/(tw*.28)));
-  var rp=runPose(ph,amp);
-  // Rebote pequeño pero con apoyo alternado y una zancada final más corta.
-  kicker.position.y=kt<tw?Math.abs(Math.sin(ph))*(.055*amp):0;
+  var u=kicker.userData,tw=RUN-.43*kickPrep,tp=RUN-.16*kickPrep;
+  var k=Math.min(1,kt/(RUN-.08)),e=sstep(k);
+  // acercamiento progresivo con desaceleración de los últimos pasos
+  kicker.position.set(u.s0[0]+(u.c[0]-u.s0[0])*e,0,u.s0[1]+(u.c[1]-u.s0[1])*e);
+  var ph=Math.min(kt,tw)*17.5,amp=.88*Math.min(1,kt/.18),pose,rp=runPose(ph,amp);
+  kicker.position.y=kt<tw?Math.abs(Math.sin(ph*2))*.045*amp:0;
   if(kt<tw)pose=rp;
   else if(kt<tp){
-    var w=sstep((kt-tw)/(tp-tw));
-    // El pie izquierdo se fija, cadera gira y el derecho se recoge para el golpe.
-    pose=rp.map(function(v,i){return lerp(v,POSE_WIND[i],w)});
-    kicker.position.y=0;
+    var w=sstep((kt-tw)/(tp-tw));pose=rp.map(function(v,i){return lerp(v,POSE_WIND[i],w)});
   }else{
-    var q=sstep((kt-tp)/(RUN-tp));
-    pose=POSE_WIND.map(function(v,i){return lerp(v,POSE_HIT[i],q)});
-    // Pequeño avance de cadera y transferencia del peso hacia el pie de apoyo.
-    kicker.position.x+=u.c[0]-u.s0[0]>.0?0:0;
+    var q=sstep((kt-tp)/(RUN-tp));pose=POSE_WIND.map(function(v,i){return lerp(v,POSE_HIT[i],q)});
   }
   applyPose(pose);setKnees();
-  if(kt>=tp){
-    var qq=sstep((kt-tp)/(RUN-tp));
-    u.legR.userData.kn.rotation.x=lerp(1.95,.08,qq);
-    // Tobillo/pie acompaña el latigazo; el torso termina orientado hacia el balón.
-    kicker.rotation.x=lerp(.04,.17,qq);
-  }
+  // apoyo firme del pie izquierdo; extensión de rodilla derecha al impacto
+  if(kt>=tp){var qq=sstep((kt-tp)/(RUN-tp));u.legR.userData.kn.rotation.x=lerp(1.95,.08,qq);u.legL.userData.kn.rotation.x=.18}
 }
 function followKicker(t){
-  var u=kicker.userData,ux=flight.ux,uz=flight.uz,p=Math.min(1,t/.22),o=1-(1-p)*(1-p),r=sstep((t-.55)/.9),i,pose=[];
-  var FOL=[-.1,-1.35,-.3,.25,-.7,.15,.3]; // pierna de golpe arriba y adelante, cuerpo se inclina
+  var u=kicker.userData,ux=flight.ux,uz=flight.uz,p=Math.min(1,t/.22),o=1-(1-p)*(1-p),r=sstep((t-.48)/.82),i,pose=[];
+  var FOL=[-.12,-1.48,-.42,.34,-.82,.22,.38];
   for(i=0;i<7;i++)pose[i]=lerp(lerp(POSE_HIT[i],FOL[i],o),i<2?0:(i===2||i===3?0:(i===4?-.15:(i===5?.15:0))),r);
-  applyPose(pose);setKnees();
-  u.legR.userData.kn.rotation.x=lerp(lerp(.12,.7,o),.1,r);
-  var hop=t<.45?.09*Math.sin(Math.PI*t/.45):0,adv=.3*sstep(t/.6);  // salta apenas y sigue un paso adelante
+  applyPose(pose);setKnees();u.legR.userData.kn.rotation.x=lerp(lerp(.08,.78,o),.1,r);
+  // pequeño paso de recuperación tras el golpe
+  var hop=t<.42?.10*Math.sin(Math.PI*t/.42):0,adv=.42*sstep(t/.72);
   kicker.position.set(u.c[0]+ux*adv,hop,u.c[1]+uz*adv);
 }
 function pos01(sp,t){var u=(t*sp)%2;return u<1?u:2-u}
@@ -1719,7 +1709,7 @@ function fire(){
   var boost=(isAi?ai.up.pow:UP().pow)>=5;
   FLAT=(!isAi&&UP().pow>=5)?clamp01((vals[2]-.7)/.3):0;
   var v0=(!isAi&&UP().pow>=5)?solveAim(vals[0],vals[1],vals[2],boost,chr().spd):shotVel(vals[0],vals[1],vals[2],ctl,yd,boost,isAi?1:chr().spd);
-  vel.set(0,0,0);flight.pendVel=v0;flight.launched=false;flight.kt=0;flight.kickPow=vals[2];
+  vel.set(0,0,0);flight.pendVel=v0;flight.launched=false;flight.kt=0;flight.kickPow=vals[2];kickPrep=.82+.55*Math.max(0,Math.min(1,vals[2]));RUN=.72+.38*Math.max(0,Math.min(1,vals[2]));
   spin=(vals[3]*2-1);
   flight.live=true;flight.t=0;flight.ai=isAi;state='flight';
   // keeper brain
